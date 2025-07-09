@@ -5,3 +5,4 @@ streamlit
 pandas>=2.2.0
 pyarrow>=18.0.0
 trio
+duckdb
