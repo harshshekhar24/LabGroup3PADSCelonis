@@ -1,5 +1,7 @@
-pyarrow==20.0.0
-pandas>=2.2.0
-streamlit
 --extra-index-url https://pypi.celonis.cloud/
+
 pycelonis
+streamlit
+pandas>=2.2.0
+pyarrow>=18.0.0
+trio
