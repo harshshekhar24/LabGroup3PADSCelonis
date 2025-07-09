@@ -1,7 +1,7 @@
 import streamlit as st
 import asyncio
 
-from ..functions import change_page
+from prototypes.draft.functions import change_page
 from common.data_loader.picker_components.pycelonis import PyCelonisModelPickerComponent
 from prototypes.draft.functions import create_combined_eventlog
 
