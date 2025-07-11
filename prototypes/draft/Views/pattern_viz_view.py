@@ -1,20 +1,20 @@
-import os
 import pandas as pd
-import ast
 import streamlit as st
 from prototypes.draft.functions import assign_node_positions, change_page
 from pyvis.network import Network
 import streamlit.components.v1 as components
 from collections import defaultdict
 
-'''
+"""
     # Load the dataset
     file_path = os.path.join(
         os.path.dirname(__file__), "EMMA_Pattern_Vorschau_JSON.csv"
     )
     df = pd.read_csv(file_path)
     df["episode"] = df["episode"].apply(ast.literal_eval)
-'''
+"""
+
+
 def pattern_viz_view():
     st.title("Frequent Episodes Visualization")
 
@@ -25,8 +25,43 @@ def pattern_viz_view():
                 change_page("pattern_mining")
         return
 
+    # Load the dataset (CSV Example Import)
+    # file_path = os.path.join(
+    #     os.path.dirname(__file__), "EMMA_Pattern_Vorschau_JSON.csv"
+    # )
+    # df = pd.read_csv(file_path)
+    # print(df)
+    # df["episode"] = df["episode"].apply(ast.literal_eval)
+    # df.rename(columns={"episode": "Episode"}, inplace=True)
+    # df.rename(columns={"support": "Support"}, inplace=True)
+    # df.rename(columns={"pattern_id": "PatternId"}, inplace=True)
+    # print(df)
+
     # Convert episodes to DataFrame
-    df = pd.DataFrame(st.session_state.episodes)
+    df_episodes = pd.DataFrame(st.session_state.episodes)
+    df_episodes["PatternId"] = range(len(df_episodes))
+    df_episodes["PatternId"] = df_episodes["PatternId"].astype(int)
+    df_episodes["Support"] = df_episodes["Support"].astype(int)
+
+    def process_episode(episode_list):
+        # Parses Input & Adds Default Object to handle Case Centric Data
+        processed_list = []
+        for element in episode_list:
+            new_element = element.copy()
+            if isinstance(new_element.get("activity"), list):
+                new_element["activity"] = " ".join(new_element["activity"])
+
+            if not new_element.get("objects"):
+                new_element["objects"] = ["Default_Object"]
+
+            processed_list.append(new_element)
+
+        return processed_list
+
+    df_episodes["Episode"] = df_episodes["Episode"].apply(process_episode)
+
+    df = df_episodes
+
     # Filter episodes by support range
     sup_min, sup_max = float(df["Support"].min()), float(df["Support"].max())
     support_range = st.slider(
@@ -37,23 +72,42 @@ def pattern_viz_view():
     )
     filtered_df = df[df["Support"].between(support_range[0], support_range[1])]
 
-    # Scan which activities are mentioned in each episode
+    # # Scan which activities are mentioned in each episode
     activities = set()
-    for episode in filtered_df["Episode"]:
-        for entry in episode:
+    for episode_str in filtered_df["Episode"]:
+        # Convert string back to list before iterating
+        episode_list = episode_str
+        for entry in episode_list:
             activities.update(entry["activity"])
     available_activities = sorted(activities)
 
-    # Let user choose activities that must be in episode
+    # # Scan which objects are mentioned in each episode
+    objects = set()
+    for episode_str in filtered_df["Episode"]:
+        episode_list = episode_str
+        for entry in episode_list:
+            objects.update(entry["objects"])
+        available_objects = sorted(objects)
+
     selected_activities = st.multiselect(
         "Episode must include all of these activities",
         options=available_activities,
     )
 
+    selected_objects = st.multiselect(
+        "Episode must include all of these objects",
+        options=available_objects,
+    )
+
+    # filter the activities and objects
     if selected_activities:
 
-        def episode_contains_selected_activities(episode):
-            activities_in_episode = {entry["activity"] for entry in episode}
+        def episode_contains_selected_activities(episode_str):
+            # Convert string back to list first
+            episode_list = episode_str
+            activities_in_episode = {
+                activity for entry in episode_list for activity in entry["activity"]
+            }
             return all(
                 activity in activities_in_episode for activity in selected_activities
             )
@@ -62,7 +116,19 @@ def pattern_viz_view():
             filtered_df["Episode"].apply(episode_contains_selected_activities)
         ]
 
-    # If no patterns match, show warning
+    if selected_objects:
+
+        def episode_contains_selected_objects(episode_str):
+            episode_list = episode_str
+            objects_in_episode = {
+                objects for entry in episode_list for objects in entry["objects"]
+            }
+            return all(objects in objects_in_episode for objects in selected_activities)
+
+        filtered_df = filtered_df[
+            filtered_df["Episode"].apply(episode_contains_selected_objects)
+        ]
+
     if filtered_df.empty:
         st.warning("No patterns match the current filters.")
         return
@@ -75,7 +141,7 @@ def pattern_viz_view():
 
     # Display patterns in tiles with basic information
     for pattern in emma_patterns:
-        pattern_id = pattern["PatternID"]
+        pattern_id = pattern["PatternId"]
         support = pattern["Support"]
         with st.expander(f"Pattern ID: {pattern_id} (Support: {support})"):
             # When the expander is clicked, show detailed information
@@ -183,12 +249,12 @@ def pattern_viz_view():
             net.set_options(
                 """
                 {
-                  "physics": { "enabled": false },
-                  "interaction": {
+                "physics": { "enabled": false },
+                "interaction": {
                     "dragNodes": true,
                     "dragView": true,
                     "zoomView": true
-                  }
+                }
                 }
                 """
             )

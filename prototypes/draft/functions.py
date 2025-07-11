@@ -1,5 +1,4 @@
 import uuid
-import itertools
 import networkx as nx
 from collections import defaultdict
 
@@ -69,6 +68,7 @@ def change_page(page_name: str):
 #     )
 #     return combined_eventlog
 
+
 # Creates ab Event Log from the different Activity Tables of a Perspective
 def create_combined_eventlog(accessor, meta_infos):
     # Get all event tables
@@ -92,9 +92,13 @@ def create_combined_eventlog(accessor, meta_infos):
 
             # Finde Objektspalten in diesem spezifischen DataFrame
             object_columns_in_df = [col for col in df.columns if col.endswith("_ID")]
-            all_object_columns.extend(object_columns_in_df)  # Füge sie zur Gesamtliste hinzu
+            all_object_columns.extend(
+                object_columns_in_df
+            )  # Füge sie zur Gesamtliste hinzu
 
-            df_filtered = df[["EventID", "Timestamp", "EventName"] + object_columns_in_df]
+            df_filtered = df[
+                ["EventID", "Timestamp", "EventName"] + object_columns_in_df
+            ]
             eventlog_dfs.append(df_filtered)
         except Exception as e:
             st.warning(f"Table `{table}` could not be loaded: {e}")
@@ -112,31 +116,33 @@ def create_combined_eventlog(accessor, meta_infos):
     combined_eventlog = combined_eventlog.fillna("")
 
     # Collect all object Columns
-    object_columns = sorted([col for col in combined_eventlog.columns if col.endswith('_ID')])
+    object_columns = sorted(
+        [col for col in combined_eventlog.columns if col.endswith("_ID")]
+    )
 
     # Combine into long format to improve performance
     long_format = pd.melt(
         combined_eventlog,
-        id_vars=['EventID'],
+        id_vars=["EventID"],
         value_vars=object_columns,
-        value_name='ObjectID'
+        value_name="ObjectID",
     )
 
     # Drop rows where no IDs are available
-    long_format = long_format.dropna(subset=['ObjectID'])
-    long_format = long_format[long_format['ObjectID'] != '']
+    long_format = long_format.dropna(subset=["ObjectID"])
+    long_format = long_format[long_format["ObjectID"] != ""]
 
-    #Find edges by self-join
-    edges = pd.merge(long_format, long_format, on='EventID')
+    # Find edges by self-join
+    edges = pd.merge(long_format, long_format, on="EventID")
 
     # Filter reflexive edges
-    edges = edges[edges['ObjectID_x'] != edges['ObjectID_y']]
+    edges = edges[edges["ObjectID_x"] != edges["ObjectID_y"]]
 
     # Create graph from edge list
-    G = nx.from_pandas_edgelist(edges, 'ObjectID_x', 'ObjectID_y')
+    G = nx.from_pandas_edgelist(edges, "ObjectID_x", "ObjectID_y")
 
     # Add nodes that dont have any edges
-    all_objects = long_format['ObjectID'].unique()
+    all_objects = long_format["ObjectID"].unique()
     G.add_nodes_from(all_objects)
 
     # Find connected components
@@ -149,15 +155,19 @@ def create_combined_eventlog(accessor, meta_infos):
     # Add execution Id to dataframe
     id_map_series = combined_eventlog[object_columns].apply(
         lambda row: next((val for val in row if val in object_to_process_id_map), None),
-        axis=1
+        axis=1,
     )
-    combined_eventlog['Process_Execution_ID'] = id_map_series.map(object_to_process_id_map)
+    combined_eventlog["Process_Execution_ID"] = id_map_series.map(
+        object_to_process_id_map
+    )
 
-    null_pids = combined_eventlog['Process_Execution_ID'].isnull()
-    combined_eventlog.loc[null_pids, 'Process_Execution_ID'] = [f"p_iso_{uuid.uuid4()}" for _ in range(null_pids.sum())]
+    null_pids = combined_eventlog["Process_Execution_ID"].isnull()
+    combined_eventlog.loc[null_pids, "Process_Execution_ID"] = [
+        f"p_iso_{uuid.uuid4()}" for _ in range(null_pids.sum())
+    ]
 
     cols = combined_eventlog.columns.tolist()
-    cols.insert(1, cols.pop(cols.index('Process_Execution_ID')))
+    cols.insert(1, cols.pop(cols.index("Process_Execution_ID")))
     combined_eventlog = combined_eventlog[cols]
 
     accessor._duckdb_connection.register("combined_eventlog", combined_eventlog)
@@ -236,13 +246,52 @@ def flatten_event_log(df, time_col="Time", event_col="Events", delimiter=","):
 
     return flat_data
 
+
 def flatten_event_log_2(df, time_col="Timestamp", event_col="EventName"):
     flat_data = []
     df[time_col] = pd.to_datetime(df[time_col])
 
     for _, row in df.iterrows():
         time = int(row[time_col].timestamp())
-        event= row.get(event_col, "")
+        event = row.get(event_col, "")
         flat_data.append((time, event))
 
     return flat_data
+
+
+def flatten_event_log_with_pid(
+    df,
+    time_col="Timestamp",
+    event_col="EventName",
+    pid_col="Process_Execution_ID",
+    object_cols=None,
+):
+    """
+    Flattens the log to: (timestamp, event, pid, [list of objects])
+    """
+    if object_cols is None:
+        object_cols = [
+            col for col in df.columns if col.endswith("_ID") and col != pid_col
+        ]
+
+    df[time_col] = pd.to_datetime(df[time_col])
+    flat_data = []
+
+    for _, row in df.iterrows():
+        time = int(row[time_col].timestamp())
+        event = row[event_col]
+        pid = row[pid_col]
+
+        # Instead of full object IDs, extract types from column names
+        objects = [col.replace("_ID", "") for col in object_cols if pd.notna(row[col])]
+
+        flat_data.append((time, event, pid, objects))
+
+    return flat_data
+
+
+def normalize_timestamps(flat_data):
+    unique_times = sorted(set(t for t, *_ in flat_data))
+    timestamp_to_index = {t: i + 1 for i, t in enumerate(unique_times)}  # Start from 1
+    flatdata_indexed = [(timestamp_to_index[t], *rest) for t, *rest in flat_data]
+    return flatdata_indexed

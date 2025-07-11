@@ -17,7 +17,9 @@ def data_selection_table():
         format_func=(lambda x: f"{x} / {meta_infos.tables[x].display_name}"),
     )
     df = st.dataframe(
-        accessor.execute_query(f"SELECT * FROM {selected_table} ORDER BY process_execution_id DESC LIMIT 5000")
+        accessor.execute_query(
+            f"SELECT * FROM {selected_table} ORDER BY process_execution_id DESC LIMIT 5000"
+        )
     )
     st.session_state.df = df
 

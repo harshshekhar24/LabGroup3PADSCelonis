@@ -10,34 +10,38 @@ from collections import defaultdict, Counter
 
 def build_indexDB(flat_data, min_support):
     # filter frequent 1-items in F1
-    counts = Counter(item for tid, item in flat_data)
+    counts = Counter(event for _, event, _, _ in flat_data)
     F1 = sorted(item for item, c in counts.items() if c >= min_support)
 
     # create the indexDB based on the locations of frequent items
-    filtered = [(tid, item) for tid, item in flat_data if item in F1]
-    filtered.sort(key=lambda x: (x[0], x[1]))  # sort by time then item
-    indexDB = [(i + 1, tid, item) for i, (tid, item) in enumerate(filtered)]
+    filtered = [
+        (time, event, pid, objs) for time, event, pid, objs in flat_data if event in F1
+    ]
+    filtered.sort(key=lambda x: (x[0], x[1]))
+
+    indexDB = [
+        (i + 1, time, event, pid, objs)
+        for i, (time, event, pid, objs) in enumerate(filtered)
+    ]
 
     # record for each frequent item the list of its locs
     item_locs = defaultdict(list)
-    for loc, tid, item in indexDB:
-        item_locs[item].append(loc)
+    item_pids = defaultdict(set)
+    item_objs = defaultdict(list)
 
-    return indexDB, item_locs, F1
+    for loc, _, event, pid, objs in indexDB:
+        item_locs[event].append(loc)
+        item_pids[event].add(pid)
+        item_objs[event].append(objs)
 
-
-def build_loc_maps(indexDB):
-    # quick lookups from loc to its transaction (tid) or item
-    loc2tid = {loc: tid for loc, tid, _ in indexDB}
-    loc2item = {loc: item for loc, _, item in indexDB}
-    return loc2tid, loc2item
+    return indexDB, item_locs, item_pids, item_objs, F1
 
 
 def build_projected_loclist(prefix, indexDB):
     # group this indexDB by tid
     tid2locs = defaultdict(list)
-    for loc, tid, item in indexDB:
-        tid2locs[tid].append((loc, item))
+    for loc, tid, event, pid, objs in indexDB:
+        tid2locs[tid].append((loc, event))
 
     projected = []
     for tid, loc_items in tid2locs.items():
@@ -54,8 +58,11 @@ def build_projected_loclist(prefix, indexDB):
 
 
 def mine_fima(flat_data, min_support):
-    indexDB, item_locs, F1 = build_indexDB(flat_data, min_support)
-    loc2tid, loc2item = build_loc_maps(indexDB)
+    indexDB, item_locs, item_pids, _, F1 = build_indexDB(flat_data, min_support)
+
+    # Mappings
+    loc2tid = {loc: tid for loc, tid, _, _, _ in indexDB}
+    loc2pid = {loc: pid for loc, _, _, pid, _ in indexDB}
 
     results = {}
     next_id = 1
@@ -84,7 +91,8 @@ def mine_fima(flat_data, min_support):
             if itm <= last:
                 continue  # keep lexicographic prefix order
             locs = local[itm]
-            if len({loc2tid[ext] for ext in locs}) < min_support:
+            pids = {loc2pid[loc] for loc in locs}
+            if len(pids) < min_support:
                 continue  # prune infrequent extensions
             new_pref = prefix + (itm,)
             record(new_pref, locs)

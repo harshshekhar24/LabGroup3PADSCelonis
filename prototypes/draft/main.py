@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 import streamlit as st
 
-from Views.data_selection import data_selection_view
+from prototypes.draft.Views.data_selection import data_selection_view
 from prototypes.draft.Views.data_selection_table import data_selection_table
 from prototypes.draft.Views.pattern_view import pattern_view
 from prototypes.draft.Views.pattern_viz_view import pattern_viz_view

@@ -53,4 +53,4 @@ def data_selection_view():
     with col3:
         # Button to get to the next page, based on the presence of a data model
         if st.button("Next", disabled=(st.session_state.data_model is None)):
-            change_page("data_selection_table")
+            change_page("pattern_mining")
